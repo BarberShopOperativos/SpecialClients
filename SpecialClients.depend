@@ -1,0 +1,45 @@
+# depslib dependency file v1.0
+1445839381 source:/home/christian/Documents/SpecialClients/BarberShopStructures.c
+	"BarberShopStructures.h"
+
+1445839381 /home/christian/Documents/SpecialClients/BarberShopStructures.h
+	<stdlib.h>
+	<malloc.h>
+	<stdbool.h>
+	<pthread.h>
+	<unistd.h>
+
+1445839381 source:/home/christian/Documents/SpecialClients/ClientThread.c
+	"ClientThread.h"
+
+1445839381 /home/christian/Documents/SpecialClients/ClientThread.h
+	<time.h>
+	"BarberShopStructures.h"
+	"SemaphoreStruct.h"
+
+1445839381 /home/christian/Documents/SpecialClients/SemaphoreStruct.h
+	<sys/types.h>
+	<sys/ipc.h>
+	<sys/shm.h>
+	<stdio.h>
+	<semaphore.h>
+	<sys/types.h>
+	<sys/stat.h>
+	<fcntl.h>
+
+1445839381 source:/home/christian/Documents/SpecialClients/FileHandler.c
+	<stdio.h>
+	"semaphore.h"
+
+1445839897 source:/home/christian/Documents/SpecialClients/main.c
+	<stdio.h>
+	<stdlib.h>
+	<unistd.h>
+	<sys/types.h>
+	<sys/ipc.h>
+	<sys/shm.h>
+	"ClientThread.h"
+
+1445839381 source:/home/christian/Documents/SpecialClients/SemaphoreStruct.c
+	"SemaphoreStruct.h"
+
