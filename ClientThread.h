@@ -1,6 +1,6 @@
 #ifndef CLIENTTHREAD_H_INCLUDED
 #define CLIENTTHREAD_H_INCLUDED
-#endif // CLIENTTHREAD_H_INCLUDED
+
 
 #include <time.h>
 #include "BarberShopStructures.h"
@@ -79,3 +79,4 @@ void payToCahier(ClientThread *pClient);
 void writeLog(int pBufferSize, ClientThread *pClient, char *pFormat);
 void writeLongLog(int pBufferSize, ClientThread *pClient, char *pFormat, int pObject);
 
+#endif // CLIENTTHREAD_H_INCLUDED

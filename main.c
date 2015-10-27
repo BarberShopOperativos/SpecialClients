@@ -4,8 +4,10 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include "ClientThread.h"
-
+#include "BarberShopStructures.c"
+#include "ClientThread.c"
+#include "SemaphoreStruct.c"
+#include "FileHandler.c"
 #define INT_SEG_SIZE 5
 #define STRUCT_SEG_SIZE 10
 #define CASHIER_QUEUE_SIZE 100
