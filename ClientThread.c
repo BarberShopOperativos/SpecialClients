@@ -20,11 +20,13 @@ char CASHIER_MOVE[] = "Cliente %s %d se mueve a la posicion %d del cajero. Hora:
 ClientThread *createClient (
     int pId,
     int *pSpecialClientsCounterPtr,
+    int pChairsQueueSize,
+    int pBarbersListSize,
     int pCashierQueueSize,
     bool pHasPriority,
     ClientThreadList *pList,
-    Container *pChairsQueue,
-    Container *pBarbersList,
+    int *pChairsQueue,
+    int *pBarbersList,
     int *pCashiersQueue,
     Semaphore *pChairsSem,
     Semaphore *pBarbersSem,
@@ -38,12 +40,13 @@ ClientThread *createClient (
     // Set client props
     client->id = pId;
     client->specialClientsCounterPtr = pSpecialClientsCounterPtr;
+    client->chairsQueuSize = pChairsQueueSize;
+    client->barbersListSize = pBarbersListSize;
     client->cashierQueueSize = pCashierQueueSize;
-    client->cashierPosition = pCashierQueueSize - 1;
     client->isActive = true;
     client->state = 1;
     client->hasPriority = pHasPriority;
-    client->actualNode = NULL;
+    client->actualPosition = -1;
     client->nextClient = NULL;
     client->chairsQueue = pChairsQueue;
     client->barbersList = pBarbersList;
@@ -140,7 +143,7 @@ void *threadRun(void  *threadArg)
 void verifyChairPosition(ClientThread *pClient)
 {
     // Find the client chair
-    if(pClient->actualNode == NULL) assignNewChair(pClient);
+    if(pClient->actualPosition == -1) assignNewChair(pClient);
     else moveFromChair(pClient);
 }
 
@@ -149,10 +152,10 @@ void verifyChairPosition(ClientThread *pClient)
 /// </summary>
 void assignNewChair(ClientThread *pClient)
 {
-    Node *chair = findEmptyChair(pClient);
-    if(chair != NULL)
+    int chairIndex = findEmptyChair(pClient);
+    if(chairIndex != -1)
     {
-        pClient->actualNode = chair;
+        pClient->actualPosition = chairIndex;
         writeLog(100,pClient,CHAIR_FOUND);
     }
     else
@@ -184,7 +187,7 @@ void moveFromChair(ClientThread *pClient)
 void moveRegularClient(ClientThread *pClient)
 {
     // If client can move to barbers
-    if(pClient->actualNode == pClient->chairsQueue->lastNode)
+    if(pClient->actualPosition == 0)
     {
         sem_wait(pClient->sClientsCounterSem->mutex);
 
@@ -194,20 +197,22 @@ void moveRegularClient(ClientThread *pClient)
             *specialClientsCounter = 0;
         }
 
-
         sem_post(pClient->sClientsCounterSem->mutex);
     }
     else // Client tries to get another chair
     {
+        int nextPosition = pClient->actualPosition - 1;
+
         sem_wait(pClient->chairsSem->mutex);
 
         // Move from chair
-        if(pClient->actualNode->next->isOcupied == false)
+        if(*(pClient->chairsQueue + nextPosition) == 0)
         {
-            pClient->actualNode->isOcupied = false;
-            pClient->actualNode = pClient->actualNode->next;
-            pClient->actualNode->isOcupied = true;
-            writeLongLog(150,pClient,CHAIR_MOVE, pClient->actualNode->id);
+
+            *(pClient->chairsQueue + pClient->actualPosition) = 0;
+            *(pClient->chairsQueue + nextPosition) = 1;
+            pClient->actualPosition = nextPosition;
+            writeLongLog(150,pClient,CHAIR_MOVE, pClient->actualPosition);
         }
 
         sem_post(pClient->chairsSem->mutex);
@@ -237,11 +242,11 @@ void moveSpecialClient(ClientThread *pClient)
     // In this case the special client will stop the progra normal execution so
     // we take it out of the chairs
     if((triedToMove == false) &&
-        (pClient->actualNode == pClient->chairsQueue->lastNode))
+        (pClient->actualPosition == 0))
     {
 
         sem_wait(pClient->chairsSem->mutex);
-        pClient->actualNode->isOcupied = false;
+        *(pClient->chairsQueue + pClient->actualPosition) = 0;
         sem_post(pClient->chairsSem->mutex);
 
         pClient->isActive = false;
@@ -254,16 +259,17 @@ void moveSpecialClient(ClientThread *pClient)
 /// </summary>
 bool moveToBarber(ClientThread *pClient)
 {
-    Node *emptyBarber = findEmptyBarber(pClient);
+    int emptyBarberIndex = findEmptyBarber(pClient);
     bool isMoved = false;
 
-    if(emptyBarber != NULL)
+    if(emptyBarberIndex != -1)
     {
         // Deocoupate chair
         sem_wait(pClient->chairsSem->mutex);
-        pClient->actualNode->isOcupied = false;
+        *(pClient->chairsQueue + pClient->actualPosition) = 0;
         sem_post(pClient->chairsSem->mutex);
-        pClient->actualNode = emptyBarber;
+
+        pClient->actualPosition = emptyBarberIndex;
         pClient->state = 2;
         writeLog(100,pClient,MOVED_TO_BARBER);
         isMoved = true;
@@ -275,56 +281,51 @@ bool moveToBarber(ClientThread *pClient)
 /// <summary>
 /// Search the chairs queue for an empty chair
 /// </summary>
-Node *findEmptyChair(ClientThread *pClient)
+int findEmptyChair(ClientThread *pClient)
 {
+
+    int index, size = pClient->chairsQueuSize,*indexPointer = pClient->chairsQueue, chairSpaceIndex = -1;
+
     sem_wait(pClient->chairsSem->mutex);
 
-    Container *chairsQueue = pClient->chairsQueue;
-    Node *tempNode, *emptyChair = NULL;
-    tempNode = chairsQueue->lastNode;
-
-    while(tempNode != NULL)
+    for(index = 0; index < size; index++)
     {
-        if(tempNode->isOcupied == false)
+        if (*(indexPointer + index) == 0)
         {
-            emptyChair = tempNode;
-            tempNode->isOcupied = true;
+            *(indexPointer + index) = 1;
+            chairSpaceIndex = index;
             break;
         }
-        tempNode = tempNode->before;
     }
 
     sem_post(pClient->chairsSem->mutex);
 
-    return emptyChair;
+    return chairSpaceIndex;
 }
 
 /// <summary>
 /// Looks for an empty barber to assign it to a client
 /// </summary>
-Node *findEmptyBarber(ClientThread *pClient)
+int findEmptyBarber(ClientThread *pClient)
 {
+
+    int index, size = pClient->barbersListSize,*indexPointer = pClient->barbersList, spaceIndex = -1;
+
     sem_wait(pClient->barbersSem->mutex);
 
-    Container *barbersList = pClient->barbersList;
-    Node *tempNode, *emptyBarber = NULL;
-
-    tempNode = barbersList->firstNode;
-
-    while(tempNode != NULL)
+    for(index = 0; index < size; index++)
     {
-        if(tempNode->isOcupied == false)
+        if (*(indexPointer + index) == 0)
         {
-            emptyBarber = tempNode;
-            tempNode->isOcupied = true;
+            *(indexPointer + index) = 1;
+            spaceIndex = index;
             break;
         }
-        tempNode = tempNode->next;
     }
 
     sem_post(pClient->barbersSem->mutex);
 
-    return emptyBarber;
+    return spaceIndex;
 }
 
 /// <summary>
@@ -337,19 +338,19 @@ void executeBarberLogic(ClientThread *pClient)
     // If there is space
     if(cashierPosition != -1)
     {
-        sem_wait(pClient->barbersSem->mutex);
-        pClient->actualNode->isOcupied = false;
         sleep(generateRandomInRange(5,30));
+
+        sem_wait(pClient->barbersSem->mutex);
+        *(pClient->barbersList + pClient->actualPosition) = 0;
         sem_post(pClient->barbersSem->mutex);
 
-        pClient->cashierPosition = cashierPosition;
+        pClient->actualPosition = cashierPosition;
         pClient->state = 3;
-        writeLongLog(150,pClient,EXEC_BARBER, pClient->actualNode->id);
+        writeLongLog(150,pClient,EXEC_BARBER, pClient->actualPosition);
     }
 
 
 }
-
 
 /// <summary>
 /// Looks for an space in the cashier queue
@@ -375,14 +376,13 @@ int findCashierQueueSpace(ClientThread *pClient)
     return cashierSpaceIndex;
 }
 
-
 /// <summary>
 /// Sleeps and leaves the barbers list
 /// </summary>
 void executeCashierLogic(ClientThread *pClient)
 {
     // Client is first in line
-    if(pClient->cashierPosition == 0)
+    if(pClient->actualPosition == 0)
     {
         payToCahier(pClient);
     }
@@ -397,7 +397,7 @@ void executeCashierLogic(ClientThread *pClient)
 /// </summary>
 void moveFromCashierQueue(ClientThread *pClient)
 {
-    int nextPosition = pClient->cashierPosition - 1;
+    int nextPosition = pClient->actualPosition - 1;
     bool moved = false;
 
     sem_wait(pClient->cashierSem->mutex);
@@ -405,35 +405,32 @@ void moveFromCashierQueue(ClientThread *pClient)
     // If next space if free
     if(*(pClient->cashiersQueue + nextPosition) == 0)
     {
-        *(pClient->cashiersQueue + pClient->cashierPosition) = 0;
+        *(pClient->cashiersQueue + pClient->actualPosition) = 0;
         *(pClient->cashiersQueue + nextPosition) = 1;
-        pClient->cashierPosition = nextPosition;
+        pClient->actualPosition = nextPosition;
 
     }
     sem_post(pClient->cashierSem->mutex);
     if(moved)
     {
-        writeLongLog(150,pClient,CASHIER_MOVE,pClient->cashierPosition);
+        writeLongLog(150,pClient,CASHIER_MOVE,pClient->actualPosition);
     }
 }
-
-
 
 /// <summary>
 /// Frees the space in queue an gets inactive
 /// </summary>
 void payToCahier(ClientThread *pClient)
 {
-    sem_wait(pClient->cashierSem->mutex);
-    // Free the space
-    *(pClient->cashiersQueue + pClient->cashierPosition) = 0;
     sleep(generateRandomInRange(5,30));
+
+    sem_wait(pClient->cashierSem->mutex);
+    *(pClient->cashiersQueue + pClient->actualPosition) = 0;
     sem_post(pClient->cashierSem->mutex);
 
     writeLog(150,pClient,EXEC_CASHIER);
     pClient->isActive = false;
 }
-
 
 /// <summary>
 /// Formats a string to be written in the file

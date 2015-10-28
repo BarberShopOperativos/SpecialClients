@@ -17,13 +17,9 @@ char FILE_SEM[] = "FileSem";
 char S_CLIENTS_COUNTER_SEM[] = "SpecialClientsCounter";
 char CLIENTS_FINISH[] = "Se detuvo el programa generador de clientes /n";
 
-
 void programInit();
 int locateSegment(key_t pKey, int pSegmentSize);
 int *pointIntSegment(int pShmID);
-Container *pointContainerSegment(int pShmID);
-Node *pointNodeSegment(int pShmID);
-key_t locateSharedStrutures(Container *pContainer, key_t pBaseNodeKey, bool pIsQueue);
 
 int main()
 {
@@ -38,10 +34,9 @@ void programInit()
     int chairsShmID, barbersShmID, cashiershmID, specialClientsCounterShmID,stopClientsShmID,stopSpecialClientesShmID,
         chairsQuantityShmID, barbersQuantityShmID,
         *specialClientsCounterPtr, *stopClientesPtr, *stopSpecialClientsPtr, *chairsQuantityPtr, *barbersQuantityPtr,
-        *cashierQueue;
+        *chairsQueue, *barbersList,*cashierQueue;
     key_t chairsKey, barbersKey, cashierKey, specialClientsCounterKey,stopClientsKey,
-        stopSpecialClientsKey,chairsQuantityKey,barbersQuantityKey,baseNodeKey;
-    Container *chairsQueue, *barbersList;
+        stopSpecialClientsKey,chairsQuantityKey,barbersQuantityKey;
 
     Semaphore *chairsSem = getSemaphore(CHAIRS_SEM);
     Semaphore *barbersSem = getSemaphore(BARBERS_SEM);
@@ -59,13 +54,9 @@ void programInit()
     chairsQuantityKey = 5683;
     barbersQuantityKey = 5684;
 
-    // Locate User input values from shared memory
+    // Locate Structures Segments
     chairsQuantityShmID = locateSegment(chairsQuantityKey,INT_SEG_SIZE);
     barbersQuantityShmID = locateSegment(barbersQuantityKey,INT_SEG_SIZE);
-    chairsQuantityPtr = pointIntSegment(chairsQuantityShmID);
-    barbersQuantityPtr = pointIntSegment(barbersQuantityShmID);
-
-    // Locate Structures Segments
     chairsShmID = locateSegment(chairsKey,STRUCT_SEG_SIZE );
     barbersShmID = locateSegment(barbersKey,STRUCT_SEG_SIZE);
     cashiershmID = locateSegment(cashierKey,CASHIER_QUEUE_SIZE);
@@ -74,24 +65,17 @@ void programInit()
     stopSpecialClientesShmID = locateSegment(stopSpecialClientsKey,INT_SEG_SIZE);
 
     // Get the structures pointers
-    chairsQueue = pointContainerSegment(chairsShmID);
-    barbersList = pointContainerSegment(barbersShmID);
+    chairsQuantityPtr = pointIntSegment(chairsQuantityShmID);
+    barbersQuantityPtr = pointIntSegment(barbersQuantityShmID);
+    chairsQueue = pointIntSegment(chairsShmID);
+    barbersList = pointIntSegment(barbersShmID);
     cashierQueue = pointIntSegment(cashiershmID);
     specialClientsCounterPtr = pointIntSegment(specialClientsCounterShmID);
     stopClientesPtr = pointIntSegment(stopClientsShmID);
     stopSpecialClientsPtr = pointIntSegment(stopSpecialClientesShmID);
 
-    // Reset initial values
-    chairsQueue->firstNode = chairsQueue->lastNode = NULL;
-    chairsQueue->length = barbersList->length = 0;
-    barbersList->firstNode = barbersList->lastNode = NULL;
-
-    baseNodeKey = barbersQuantityKey;
-    baseNodeKey = locateSharedStrutures(chairsQueue,baseNodeKey,true);
-    baseNodeKey = locateSharedStrutures(barbersList,baseNodeKey,false);
-
-    printf("Cantidad sillas: %d ... \n", chairsQueue->length);
-    printf("Cantidad barberos: %d ... \n", barbersList->length);
+    printf("Cantidad sillas: %d ... \n", *chairsQuantityPtr);
+    printf("Cantidad barberos: %d ... \n", *barbersQuantityPtr);
     printf("Special clients counter: %d \n", *specialClientsCounterPtr);
 
 
@@ -100,8 +84,9 @@ void programInit()
 
     while(*stopClientesPtr == 1)
     {
-        createClient(list->length,specialClientsCounterPtr,CASHIER_QUEUE_SIZE,true,list,chairsQueue,barbersList,cashierQueue,
-        chairsSem,barbersSem,cashierSem,fileSem,sClientsCounterSem);
+        createClient(list->length,specialClientsCounterPtr,*chairsQuantityPtr,*barbersQuantityPtr,
+            CASHIER_QUEUE_SIZE,true,list,chairsQueue,barbersList,cashierQueue,
+            chairsSem,barbersSem,cashierSem,fileSem,sClientsCounterSem);
         sleep(generateRandomInRange(2,3));
     }
 
@@ -143,67 +128,3 @@ int *pointIntSegment(int pShmID)
     //printf("Segment pointed ... \n");
     return pointer;
 }
-
-/// <summary>
-/// Gets the pointer to an Container value segment
-/// </summary>
-Container *pointContainerSegment(int pShmID)
-{
-
-    Container *pointer;
-    if ((pointer = shmat(pShmID, NULL, 0)) == (Container *) -1) {
-        printf("Error obteniendo puntero de segmento con llave: %d /n", pShmID);
-        exit(1);
-    }
-
-    //printf("Segment pointed ... \n");
-    return pointer;
-}
-
-/// <summary>
-/// Gets the pointer to an Node value segment
-/// </summary>
-Node *pointNodeSegment(int pShmID)
-{
-
-    Node *pointer;
-    if ((pointer = shmat(pShmID, NULL, 0)) == (Node *) -1) {
-        printf("Error obteniendo puntero de segmento con llave: %d /n", pShmID);
-        exit(1);
-    }
-
-    //printf("Segment pointed ... \n");
-    return pointer;
-}
-
-/// <summary>
-/// Gets the node segments of an specific container
-/// </summary>
-key_t locateSharedStrutures(Container *pContainer, key_t pBaseNodeKey, bool pIsQueue)
-{
-    // Initialize the chairs queue spaces
-    Node *actualNode;
-    key_t baseNodeKey = pBaseNodeKey;
-    int nodeShmID;
-    int baseIndex;
-
-    for(baseIndex = 0; baseIndex < pContainer->maxLenght; baseIndex++)
-    {
-        baseNodeKey += 1;
-        nodeShmID = locateSegment(baseNodeKey,STRUCT_SEG_SIZE);
-        actualNode = pointNodeSegment(nodeShmID);
-
-        actualNode->next = actualNode->before = NULL;
-
-        if(pIsQueue) addExistingNodeToQueueContainer(pContainer,actualNode);
-        else addExistingNodeToListContainer(pContainer,actualNode);
-
-        //printf("Node BaseKey: %d \n", actualNode->id);
-    }
-    return baseNodeKey;
-
-}
-
-
-
-
